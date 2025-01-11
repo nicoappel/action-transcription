@@ -1,25 +1,76 @@
-import sys
-import replicate
-import json
+import whisper
+import os
+import subprocess
+from typing import Optional
 
+def download_video_audio(video_url: str, output_path: Optional[str] = None) -> str:
+    """
+    Download audio from video using yt-dlp.
+    
+    Args:
+        video_url: URL of the video to download
+        output_path: Optional custom output path for the audio file
+    
+    Returns:
+        Path to the downloaded audio file
+    """
+    if output_path is None:
+        output_path = "downloaded_audio.mp3"
+    
+    try:
+        subprocess.run([
+            "yt-dlp", 
+            "-x",  # extract audio
+            "--audio-format", "mp3", 
+            "-o", output_path, 
+            video_url
+        ], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error downloading audio: {e}")
+        raise
+    
+    return output_path
 
-def transcribe_audio(filepath):
-    model = replicate.models.get("cjwbw/whisper")
-    return model.predict(
-        audio=open(filepath, "rb"),
-        model="large",
-        translate=True
-    )
+def transcribe_audio(audio_path: str, model_size: str = "base") -> str:
+    """
+    Transcribe audio using local Whisper installation.
+    
+    Args:
+        audio_path: Path to the audio file
+        model_size: Size of the Whisper model to use
+    
+    Returns:
+        Transcribed text
+    """
+    model = whisper.load_model(model_size)
+    result = model.transcribe(audio_path)
+    return result["text"]
 
+def main(video_url: str):
+    """
+    Main transcription workflow.
+    
+    Args:
+        video_url: URL of the video to transcribe
+    """
+    try:
+        audio_path = download_video_audio(video_url)
+        transcript = transcribe_audio(audio_path)
+        
+        # Save transcript
+        with open("transcript.txt", "w", encoding="utf-8") as f:
+            f.write(transcript)
+        
+        # Clean up downloaded audio
+        os.remove(audio_path)
+        
+        print("Transcription completed successfully.")
+    except Exception as e:
+        print(f"Transcription failed: {e}")
 
 if __name__ == "__main__":
-    audio_path = sys.argv[-2]
-    output_path = sys.argv[-1]
-    if not audio_path.endswith(".mp3"):
-        print("Please provide an mp3 file")
+    import sys
+    if len(sys.argv) < 2:
+        print("Please provide a video URL")
         sys.exit(1)
-    if not output_path.endswith(".json"):
-        print("Please provide a .json output file")
-        sys.exit(1)
-    output = transcribe_audio(audio_path)
-    open(output_path, "w").write(json.dumps(output, indent=2) + "\n")
+    main(sys.argv[1])
